@@ -1,106 +1,93 @@
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.18)
+project(cis565_rasterizer LANGUAGES CUDA CXX)
 
-project(cis565_rasterizer)
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
 
-# Set up include and lib paths
-include_directories(.)
-include_directories("external")
-include_directories("external/include")
-if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    set(EXTERNAL_LIB_PATH "external/lib/osx")
-elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    set(EXTERNAL_LIB_PATH "external/lib/linux" "/usr/lib64")
-elseif(WIN32)
-    set(EXTERNAL_LIB_PATH "external/lib/win")
-endif()
-link_directories(${EXTERNAL_LIB_PATH})
-list(APPEND CMAKE_LIBRARY_PATH "${EXTERNAL_LIB_PATH}")
-
-
-# Find up and set up core dependency libs
-
-set(GLFW_INCLUDE_DIR "external/include")
-set(GLFW_LIBRARY_DIR "${EXTERNAL_LIB_PATH}")
-find_library(GLFW_LIBRARY "glfw3" HINTS "${GLFW_LIBRARY_DIR}")
-
-set(GLEW_INCLUDE_DIR "external/include")
-set(GLEW_LIBRARY_DIR "${EXTERNAL_LIB_PATH}")
-add_definitions(-DGLEW_STATIC)
-find_package(GLEW)
-
-find_package(OpenGL)
-
-set(CORELIBS
-    "${GLFW_LIBRARY}"
-    "${OPENGL_LIBRARY}"
-    "${GLEW_LIBRARY}"
-    )
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # Enable C++11 for host code
 set(CMAKE_CXX_STANDARD 11)
-
-# Set up different build configurations
-set(CMAKE_CONFIGURATION_TYPES Debug;RelWithDebInfo;Release
-    CACHE STRING "Set configuration types" FORCE)
-set(CUDA_PROPAGATE_HOST_FLAGS OFF)
-set(CMAKE_CXX_FLAGS_DEBUG                 "-O0 -g")
-set(CMAKE_CXX_FLAGS_RELWITHDEBINFO        "-O2 -g")
-set(CMAKE_CXX_FLAGS_RELEASE               "-O3    -DNDEBUG")
-list(APPEND CUDA_NVCC_FLAGS_DEBUG          -O0 -g -G)
-list(APPEND CUDA_NVCC_FLAGS_RELWITHDEBINFO -O2 -g -lineinfo)
-list(APPEND CUDA_NVCC_FLAGS_RELEASE        -O3    -DNDEBUG)
-if (WIN32)
-    set(CUDA_PROPAGATE_HOST_FLAGS ON)
-    set(CMAKE_CXX_FLAGS                       "/MD /EHsc /D _CRT_SECURE_NO_WARNINGS")
-    set(CMAKE_CXX_FLAGS_DEBUG                 "/Od /Zi")
-    set(CMAKE_CXX_FLAGS_RELWITHDEBINFO        "/O2 /Zi")
-    set(CMAKE_CXX_FLAGS_RELEASE               "/O2 /D NDEBUG")
+if(NOT DEFINED CMAKE_CUDA_STANDARD)
+    set(CMAKE_CUDA_STANDARD 11)
+    set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 endif()
 
-# OS X options
-if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    list(APPEND CORELIBS "-framework IOKit")
-    list(APPEND CORELIBS "-framework Cocoa")
-    list(APPEND CORELIBS "-framework CoreVideo")
+# Set a default build type if none was specified
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    SET(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build." FORCE)
+    # Set the possible values of build type for cmake-gui
+    SET_PROPERTY(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
 endif()
 
-# Linux options
-if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    list(APPEND CMAKE_EXE_LINKER_FLAGS "-lX11 -lXxf86vm -lXrandr -lXi")
+find_package(OpenGL REQUIRED)
+
+if(UNIX)
+    include_directories("${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}")
+    find_package(glfw3 REQUIRED)
+    find_package(GLEW REQUIRED)
+    set(LIBRARIES glfw ${GLEW_LIBRARIES} ${OPENGL_LIBRARIES})
+else(UNIX)
+    set(EXTERNAL "${CMAKE_SOURCE_DIR}/external")
+
+    set(GLFW_ROOT_DIR ${EXTERNAL})
+    set(GLFW_USE_STATIC_LIBS ON)
+    find_package(GLFW REQUIRED)
+
+    set(GLEW_ROOT_DIR ${EXTERNAL})
+    set(GLEW_USE_STATIC_LIBS ON)
+    find_package(GLEW REQUIRED)
+
+    add_definitions(${GLEW_DEFINITIONS})
+    include_directories(${GLEW_INCLUDE_DIR} ${GLFW_INCLUDE_DIR})
+    set(LIBRARIES ${GLEW_LIBRARY} ${GLFW_LIBRARY} ${OPENGL_LIBRARY})
+endif(UNIX)
+
+set(GLM_ROOT_DIR "${CMAKE_SOURCE_DIR}/external")
+find_package(GLM REQUIRED)
+include_directories(${GLM_INCLUDE_DIRS})
+
+set(headers
+    src/rasterize.h
+    src/rasterizeTools.h
+    src/main.hpp
+    src/utilityCore.hpp
+    src/glslUtility.hpp
+    src/checkCUDAError.h
+    src/tiny_gltf_loader.h
+    src/stb_image.h
+    src/picojson.h
+)
+
+set(sources
+    src/rasterize.cu
+    src/main.cpp
+    src/utilityCore.cpp
+    src/glslUtility.cpp
+)
+
+list(SORT headers)
+list(SORT sources)
+
+source_group("Headers" FILES ${headers})
+source_group("Sources" FILES ${sources})
+
+add_executable(${CMAKE_PROJECT_NAME} ${sources} ${headers})
+set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+if(CMAKE_VERSION VERSION_LESS "3.23.0")
+    set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES CUDA_ARCHITECTURES OFF)
+elseif(CMAKE_VERSION VERSION_LESS "3.24.0")
+    set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES CUDA_ARCHITECTURES all-major)
+else()
+    set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES CUDA_ARCHITECTURES native)
 endif()
-
-if (WIN32)
-    list(APPEND CORELIBS legacy_stdio_definitions.lib)
-endif()
-
-# CUDA linker options
-find_package(Threads REQUIRED)
-find_package(CUDA 8.0 REQUIRED)
-set(CUDA_ATTACH_VS_BUILD_RULE_TO_CUDA_FILE ON)
-set(CUDA_SEPARABLE_COMPILATION ON)
-
-#add_subdirectory(stream_compaction)  # TODO: uncomment if using your own stream compaction
-add_subdirectory(src)
-add_subdirectory(util)
-
-cuda_add_executable(${CMAKE_PROJECT_NAME}
-    "src/main.hpp"
-    "src/main.cpp"
-    )
-
 target_link_libraries(${CMAKE_PROJECT_NAME}
-    src
-    util
-    #stream_compaction  # TODO: uncomment if using your own stream compaction
-    ${CORELIBS}
+    ${LIBRARIES}
+    cudadevrt
     )
-
-add_custom_command(
-    TARGET ${CMAKE_PROJECT_NAME}
-    POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/shaders
-        ${CMAKE_BINARY_DIR}/shaders
-    )
+target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE "$<$<AND:$<CONFIG:Debug,RelWithDebInfo>,$<COMPILE_LANGUAGE:CUDA>>:-G;-src-in-ptx>")
+target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE "$<$<AND:$<CONFIG:Release>,$<COMPILE_LANGUAGE:CUDA>>:-lineinfo;-src-in-ptx>")
+set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ${CMAKE_PROJECT_NAME})

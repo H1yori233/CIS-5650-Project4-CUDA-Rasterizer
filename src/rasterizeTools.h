@@ -10,7 +10,7 @@
 
 #include <cmath>
 #include <glm/glm.hpp>
-#include <util/utilityCore.hpp>
+#include "utilityCore.hpp"
 
 struct AABB {
     glm::vec3 min;

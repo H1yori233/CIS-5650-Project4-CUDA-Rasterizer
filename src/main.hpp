@@ -20,8 +20,8 @@
 #include <cuda_gl_interop.h>
 #include <cuda_runtime.h>
 #include <glm/glm.hpp>
-#include <util/glslUtility.hpp>
-#include <util/utilityCore.hpp>
+#include "glslUtility.hpp"
+#include "utilityCore.hpp"
 
 #include "rasterize.h"
 

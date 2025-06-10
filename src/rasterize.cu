@@ -11,8 +11,8 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <thrust/random.h>
-#include <util/checkCUDAError.h>
-#include <util/tiny_gltf_loader.h>
+#include "checkCUDAError.h"
+#include "tiny_gltf_loader.h"
 #include "rasterizeTools.h"
 #include "rasterize.h"
 #include <glm/gtc/quaternion.hpp>
